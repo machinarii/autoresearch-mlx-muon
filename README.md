@@ -58,7 +58,24 @@ Longer overnight runs on the working MLX port pushed much further. The long Mac 
 
 The Mac Mini result matters because it did not just rediscover the same exact recipe. On smaller Apple Silicon hardware, the strongest changes leaned toward more aggressive step-efficiency wins. Later transfer tests showed some of those Mac Mini findings did not carry cleanly onto the Max baseline, which is exactly the kind of hardware-specific behavior this loop is useful for uncovering.
 
-_M4 Max Muon benchmarks pending — see `docs/superpowers/plans/2026-04-14-muon-mlx.md` for the validation plan._
+## Muon Newton-Schulz micro-benchmarks (M4 Max Mac Studio, 128GB)
+
+Hardware: **Mac Studio M4 Max, 16-core CPU / 40-core GPU / 128GB unified memory**. Numbers are wall-clock ms per 5 Newton-Schulz iterations at various matrix sizes, averaged over 10 runs.
+
+| Shape | bfloat16 | float32 |
+|---|---:|---:|
+| 256 × 256 | 0.41 ms | 0.39 ms |
+| 384 × 384 | 0.58 ms | 0.57 ms |
+| 512 × 512 | 0.81 ms | 0.88 ms |
+| 768 × 768 | 1.66 ms | 1.79 ms |
+
+**Per-step Muon overhead at target config** (12 weight matrices × 512², 5 NS iterations): **~1.0 ms per training step**. Over a 5-minute budget at 400–700 steps/run, that's **0.6–0.7s of total NS overhead** — well under the PRD's 5% budget.
+
+**Two M4 Max findings worth recording:**
+- **Do not wrap `newton_schulz` in `mx.compile`.** On this hardware the wrapped version is ~**0.62× speed** (38% *slower*) — likely JIT warmup cost not amortizing over the small call count. The code as shipped on `muon-mlx` deliberately does not use `mx.compile` for NS.
+- **`bfloat16` ties or beats `float32`** at every matrix size tested. On M1-class silicon the picture was mixed (float32 sometimes won). Stick with the default `MUON_NS_DTYPE = "bfloat16"` here.
+
+End-to-end training val_bpb comparisons (AdamW-only vs Muon+AdamW at `DEPTH=6, ASPECT_RATIO=64`) pending — see `docs/superpowers/plans/2026-04-14-muon-mlx.md`.
 
 ## Differences from upstream
 
