@@ -113,3 +113,29 @@ The idea is that you are a completely autonomous researcher trying things out. I
 **NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — read papers referenced in the code, re-read the in-scope files for new angles, try combining previous near-misses, try more radical architectural changes. The loop runs until the human interrupts you, period.
 
 As an example use case, a user might leave you running while they sleep. If each experiment takes you ~7 minutes then you can run approx 8-9/hour, for a total of about 70 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
+
+## Dual-Optimizer Notes (Muon + AdamW)
+
+This fork uses **Muon for 2D block weight matrices** (attention Q/K/V/O, MLP up/down) and **AdamW for everything else** (embeddings `wte`, value embeddings `value_embeds`, output head `lm_head`, layer norms, and scalar mixers `resid_lambdas` / `x0_lambdas`). Muon applies Newton-Schulz orthogonalization to the momentum-accumulated update, removing redundant correlations between parameter dimensions so each step does more work.
+
+**Muon's advantage is model-size dependent on Apple Silicon.** On the M5 Max with a small model (4 layers, 256 dim, ~1900 steps in 5 minutes) AdamW beat Muon outright — the agent correctly never adopted it (issue #21). On the Mac Mini (slower hardware, fewer steps) Muon won. The M4 Max 128GB sits between these, so the default config here (`DEPTH=6`, `ASPECT_RATIO=64`, `n_embd=512`) targets the crossover zone where Muon has a fair trial.
+
+**Muon-specific hyperparameters** (all top-level constants in `train.py`):
+
+| Constant | Default | Range | Notes |
+|---|---|---|---|
+| `MUON_MOMENTUM` | 0.95 | 0.90 – 0.99 | SGD momentum β₁ |
+| `MUON_NS_STEPS` | 5 | 0, 3, 5, 7 | 0 disables Muon entirely (falls back to scaled SGD-momentum) |
+| `MUON_NESTEROV` | True | True/False | Nesterov look-ahead inside Muon |
+| `MUON_BETA2` | 0.95 | 0.0 or 0.90 – 0.99 | EMA of update norm² for adaptive scaling; 0 disables |
+| `MUON_NS_DTYPE` | "bfloat16" | "bfloat16" or "float32" | Metal bfloat16 stability is unvalidated beyond 100 steps; try float32 if you see divergence |
+| `MATRIX_LR` | 0.02 | 0.005 – 0.1 | Muon LR for 2D block matrices (used by AdamW when `MUON_NS_STEPS=0`) |
+
+**Decision hints from prior runs:**
+- `WEIGHT_DECAY = 0.15` won on M5 Max; `0.2` was the old AdamW-only default.
+- SiLU activation was catastrophic (1.301 → 1.768) on M5 Max. The current MLP uses `relu(x)**2` — don't swap it for SiLU.
+- Gradual LR reduction (matrix_lr 0.04 → 0.005 in small increments) was a dominant M5 Max lever.
+- **If you scale the model below `ASPECT_RATIO=48` or below `DEPTH=5`, also test `MUON_NS_STEPS=0` — Muon likely hurts at small matrix sizes.**
+- **If you scale up (`DEPTH>=8` or `ASPECT_RATIO>=96`), Muon's advantage should grow — keep `MUON_NS_STEPS=5` and tune `MATRIX_LR` / `MUON_MOMENTUM`.**
+
+**Disabling Muon** is a single-constant edit: `MUON_NS_STEPS = 0`. This lets you isolate Muon's contribution vs any architecture change you're testing.
