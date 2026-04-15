@@ -8,3 +8,4 @@ c67ad2a	2.695369	26.9	discard	lower weight decay to 0.1
 87d43c5	1.648356	23.9	discard	A/B with MUON_NS_STEPS=0 at same config; Muon on wins by 0.012 bpb
 1249e47	1.817366	33.8	discard	combo failed: DEVICE_BATCH=32 + MATRIX_LR=0.03 + WARMUP=0.05 regressed by 0.181 bpb; throughput win was noise
 6cd22f6	1.898998	31.9	discard	AR=128 scale-up (n_embd=768): PRD matrix-size thesis did not hold on M4 Max; step count fell 57% and Muon could not compensate
+851e413	1.760068	26.4	discard	DEPTH=4 AR=128: n_embd went 384->512 (not same as I claimed); step count barely moved; val_bpb +0.124
