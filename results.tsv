@@ -5,3 +5,4 @@ c67ad2a	2.695369	26.9	discard	lower weight decay to 0.1
 4161af3	2.533728	26.9	keep	increase matrix LR to 0.04
 5efc7aa	1.807902	20.7	keep	reduce depth from 8 to 4
 24372fe	1.635916	23.9	keep	Muon+AdamW target scale (DEPTH=6 AR=64 MATRIX_LR=0.02 WD=0.15 NS_STEPS=5) — first M4 Max run
+87d43c5	1.648356	23.9	discard	A/B with MUON_NS_STEPS=0 at same config; Muon on wins by 0.012 bpb
