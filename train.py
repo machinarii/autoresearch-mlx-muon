@@ -445,7 +445,7 @@ class AdamW:
 # ---------------------------------------------------------------------------
 
 # Model architecture
-ASPECT_RATIO = 64
+ASPECT_RATIO = 96
 HEAD_DIM = 128
 WINDOW_PATTERN = "SSSL"
 
@@ -477,7 +477,7 @@ MUON_BETA2 = 0.95
 MUON_NS_DTYPE = "bfloat16"
 
 # Model size
-DEPTH = 6
+DEPTH = 4
 DEVICE_BATCH_SIZE = 16
 FINAL_EVAL_BATCH_SIZE = 256
 STARTUP_EXCLUDE_STEPS = 1
