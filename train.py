@@ -316,6 +316,14 @@ class AdamW:
                     "weight_decay": 0.0,
                 }
 
+        # Muon routing: 2D block params only (attention Q/K/V/O, MLP up/down).
+        # Embeddings (wte, value_embeds) and output head (lm_head) stay on AdamW
+        # even though some are 2D — this matches Keller Jordan's original spec.
+        self.muon_paths = set()
+        for path, param in flat_params:
+            if "blocks" in path and param.ndim == 2:
+                self.muon_paths.add(path)
+
         self.initial_lrs = {path: config["lr"] for path, config in self.param_config.items()}
 
     def _set_path_value(self, model, path, value):
@@ -363,6 +371,47 @@ class AdamW:
         param_f32 = param_f32 - step_size * (state["m"] / denom)
         return param_f32.astype(param.dtype)
 
+    def _muon_step(self, path, grad, param, config):
+        grad_f32 = grad.astype(mx.float32)
+        param_f32 = param.astype(mx.float32)
+        lr = config["lr"]
+        weight_decay = config["weight_decay"]
+
+        if path not in self.adam_state:
+            self.adam_state[path] = {
+                "momentum_buffer": mx.zeros_like(grad_f32),
+                "nu": mx.array(0.0),
+                "t": 0,
+            }
+
+        state = self.adam_state[path]
+        state["t"] += 1
+
+        # SGD-momentum (+ optional Nesterov)
+        buf = MUON_MOMENTUM * state["momentum_buffer"] + grad_f32
+        state["momentum_buffer"] = buf
+        update = (grad_f32 + MUON_MOMENTUM * buf) if MUON_NESTEROV else buf
+
+        # Newton-Schulz orthogonalization
+        update = newton_schulz(update, MUON_NS_STEPS, MUON_NS_DTYPE)
+
+        # Aspect-ratio scaling (shape-scaling mode; PRD §3 phase 3)
+        fan_out, fan_in = param.shape[0], param.shape[1]
+        scale = max(1.0, fan_out / fan_in) ** 0.5
+
+        # Optional adaptive magnitude via EMA of update-norm²
+        if MUON_BETA2 > 0:
+            update_sq_norm = mx.sum(update * update)
+            nu = MUON_BETA2 * state["nu"] + (1 - MUON_BETA2) * update_sq_norm
+            state["nu"] = nu
+            bc = 1 - MUON_BETA2 ** state["t"]
+            update = update / (mx.sqrt(nu / bc) + 1e-8)
+
+        # Decoupled weight decay + update application
+        param_f32 = param_f32 * (1 - lr * weight_decay)
+        param_f32 = param_f32 - lr * scale * update
+        return param_f32.astype(param.dtype)
+
     def update(self, model, grads):
         flat_grads = dict(tree_flatten(grads))
         flat_params = dict(tree_flatten(model.parameters()))
@@ -371,7 +420,10 @@ class AdamW:
                 continue
             config = self.param_config[path]
             param = flat_params[path]
-            new_param = self._step(path, grad, param, config)
+            if path in self.muon_paths:
+                new_param = self._muon_step(path, grad, param, config)
+            else:
+                new_param = self._step(path, grad, param, config)
             self._set_path_value(model, path, new_param)
 
     def set_lr_multiplier(self, multiplier):
@@ -382,7 +434,9 @@ class AdamW:
     def state(self):
         arrays = []
         for state in self.adam_state.values():
-            arrays.extend([state["m"], state["v"]])
+            for value in state.values():
+                if isinstance(value, mx.array):
+                    arrays.append(value)
         return arrays
 
 
