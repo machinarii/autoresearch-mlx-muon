@@ -57,6 +57,41 @@ def get_peak_memory_mb():
     return mx.get_peak_memory() / 1024 / 1024
 
 
+# ---------------------------------------------------------------------------
+# Muon: Newton-Schulz orthogonalization
+# ---------------------------------------------------------------------------
+# Newton-Schulz coefficients tuned by Keller Jordan; maximize slope at zero so
+# the iteration converges to the polar factor (nearest orthogonal matrix) in
+# ~5 steps. Verified stable on CUDA bfloat16; agent should test
+# MUON_NS_DTYPE="float32" if it sees divergence on Metal.
+NS_COEFFS = (3.4445, -4.7750, 2.0315)
+
+
+def newton_schulz(G, steps, dtype_str):
+    """Nearest-orthogonal matrix to G via Newton-Schulz. See PRD 4.1 / muon_mlx_reference.py."""
+    if steps == 0:
+        return G
+    a, b, c = NS_COEFFS
+    original_dtype = G.dtype
+    target_dtype = mx.bfloat16 if dtype_str == "bfloat16" else mx.float32
+    X = G.astype(target_dtype)
+
+    transposed = False
+    if X.shape[0] > X.shape[1]:
+        X = X.T
+        transposed = True
+
+    X = X / mx.maximum(mx.linalg.norm(X), 1e-7)
+    for _ in range(steps):
+        A = X @ X.T
+        B = b * A + c * (A @ A)
+        X = a * X + B @ X
+
+    if transposed:
+        X = X.T
+    return X.astype(original_dtype)
+
+
 class CausalSelfAttention(nn.Module):
     def __init__(self, config, layer_idx):
         super().__init__()
