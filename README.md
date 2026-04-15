@@ -69,13 +69,33 @@ Hardware: **Mac Studio M4 Max, 16-core CPU / 40-core GPU / 128GB unified memory*
 | 512 × 512 | 0.81 ms | 0.88 ms |
 | 768 × 768 | 1.66 ms | 1.79 ms |
 
-**Per-step Muon overhead at target config** (12 weight matrices × 512², 5 NS iterations): **~1.0 ms per training step**. Over a 5-minute budget at 400–700 steps/run, that's **0.6–0.7s of total NS overhead** — well under the PRD's 5% budget.
+**Per-matrix NS cost** above is a useful upper bound, but real in-training overhead is lower: MLX's lazy evaluation fuses the NS calls into the full step graph. Empirically at `DEPTH=6, AR=64` (the baseline config below), a `MUON_NS_STEPS=5` run and a `MUON_NS_STEPS=0` A/B at otherwise-identical settings both completed exactly 205 optimizer steps — Newton-Schulz is not measurably cutting into the 300 s training budget at this model scale.
 
 **Two M4 Max findings worth recording:**
 - **Do not wrap `newton_schulz` in `mx.compile`.** On this hardware the wrapped version is ~**0.62× speed** (38% *slower*) — likely JIT warmup cost not amortizing over the small call count. The code as shipped on `muon-mlx` deliberately does not use `mx.compile` for NS.
 - **`bfloat16` ties or beats `float32`** at every matrix size tested. On M1-class silicon the picture was mixed (float32 sometimes won). Stick with the default `MUON_NS_DTYPE = "bfloat16"` here.
 
-End-to-end training val_bpb comparisons (AdamW-only vs Muon+AdamW at `DEPTH=6, ASPECT_RATIO=64`) pending — see `docs/superpowers/plans/2026-04-14-muon-mlx.md`.
+## M4 Max Muon integration results
+
+Experimental sequence on the `muon-mlx` branch, Mac Studio M4 Max 128 GB. Each run uses the fixed 300 s training budget. `Δ` is the regression vs. the kept best.
+
+| Commit | val_bpb | Δ | Status | Change |
+|---|---:|---:|---|---|
+| `24372fe` | **1.635916** | — | **keep** | Muon+AdamW at `DEPTH=6, AR=64` (`n_embd=384`, 26 M params, 205 steps) |
+| `87d43c5` | 1.648356 | +0.012 | discard | A/B: same config with `MUON_NS_STEPS=0` (orthogonalization disabled) |
+| `1249e47` | 1.817366 | +0.181 | discard | combo: `DEVICE_BATCH=32` + `MATRIX_LR=0.03` + `WARMUP=0.05` |
+| `6cd22f6` | 1.898998 | +0.263 | discard | `AR=128` scale-up (`n_embd=768`, 89 steps — step count collapsed) |
+| `851e413` | 1.760068 | +0.124 | discard | `DEPTH=4, AR=128` (`n_embd` grew to 512; step count barely moved) |
+| `c30bf75` | 1.722486 | +0.087 | discard | `DEPTH=4, AR=96` (`n_embd=384` held; 285 steps, but −2 layers cost too much) |
+
+**Findings from the manual search:**
+
+- **Muon's isolated contribution on M4 Max: +0.012 bpb** over the `NS_STEPS=0` fallback at identical config. Real, but small — consistent with the PRD's prediction that Muon's advantage is hardware- and model-size-dependent on Apple Silicon.
+- **NS overhead is empirically zero at this model scale.** Both `NS_STEPS=5` and `NS_STEPS=0` runs completed exactly 205 steps, so the orthogonalization path isn't cutting into the compute budget. MLX fuses it well.
+- **`DEPTH=6` at `n_embd=384` is the local optimum** under manual single-axis search. Three independent perturbations (batch + LR + warmup combo, matrix-size scale-up, fewer layers at same matrix size) all regressed. Both "more matrix size" and "more steps via shallower model" lost — layer depth carries real signal at this matrix size.
+- **The PRD's "matrix size unlocks Muon on 128 GB" thesis did not hold** within the 5-minute budget. Scaling `n_embd` 384 → 768 crashed step count from 205 to 89; Muon's per-step edge couldn't compensate. This extends issue #21's pattern (Apple Silicon's fast compute + fixed-time budget favors smaller models) to the M4 Max regime.
+
+With the integration validated and a clean baseline established, further optimization should hand off to the autoresearch loop for multi-axis joint sweeps — see `program.md` and `docs/superpowers/plans/2026-04-14-muon-mlx.md`.
 
 ## Differences from upstream
 
