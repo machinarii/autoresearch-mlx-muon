@@ -88,6 +88,7 @@ End-to-end training val_bpb comparisons (AdamW-only vs Muon+AdamW at `DEPTH=6, A
 ## Acknowledgments
 
 - [Andrej Karpathy](https://github.com/karpathy) - autoresearch and nanochat
+- [trevin-creator/autoresearch-mlx](https://github.com/trevin-creator/autoresearch-mlx) - original MLX port of autoresearch (this fork extends it with Muon)
 - [scasella/nanochat-mlx](https://github.com/scasella/nanochat-mlx) - MLX GPT and optimizer reference
 - [awni/picochat](https://github.com/awni/picochat) - MLX training patterns
 - [Apple MLX team](https://github.com/ml-explore/mlx)
