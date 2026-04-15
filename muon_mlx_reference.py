@@ -18,6 +18,14 @@ Usage:
   python muon_mlx_reference.py --bench  # benchmark only
 """
 
+# ---------------------------------------------------------------------------
+# STATUS: reference kept for isolated Newton-Schulz debugging.
+# The validated logic was inlined into train.py on branch `muon-mlx`
+# (commits 38ce76f newton_schulz, 596c2f2 constants, cca3f5f dual-path).
+# Delete this file after a clean end-to-end training run confirms Muon works
+# inside train.py. Until then, use this file to bisect NS-only issues.
+# ---------------------------------------------------------------------------
+
 import time
 import mlx.core as mx
 import mlx.nn as nn

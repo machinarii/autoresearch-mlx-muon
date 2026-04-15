@@ -58,10 +58,12 @@ Longer overnight runs on the working MLX port pushed much further. The long Mac 
 
 The Mac Mini result matters because it did not just rediscover the same exact recipe. On smaller Apple Silicon hardware, the strongest changes leaned toward more aggressive step-efficiency wins. Later transfer tests showed some of those Mac Mini findings did not carry cleanly onto the Max baseline, which is exactly the kind of hardware-specific behavior this loop is useful for uncovering.
 
+_M4 Max Muon benchmarks pending — see `docs/superpowers/plans/2026-04-14-muon-mlx.md` for the validation plan._
+
 ## Differences from upstream
 
 - **MLX instead of PyTorch/CUDA.** Native Apple Silicon training with unified memory.
-- **AdamW-only public path.** This public `train.py` keeps the default path simple. The long Mac Mini run above explored a Muon variant in the working port, but that branch is not exposed as a public default here.
+- **Dual-path optimizer.** Uses a dual-path optimizer: **Muon** (Newton-Schulz orthogonalized momentum) for 2D block weight matrices, **AdamW** for embeddings, the output head, layer norms, and scalar mixers. See `prd_muon_mlx.md` for the port rationale and Apple Silicon model-size crossover analysis.
 - **Smaller eval token budget.** Reduced for faster iteration on Apple Silicon while keeping the same `evaluate_bpb` interface in `prepare.py`.
 - **Roughly 6-7 minutes per experiment.** Expect 5 minutes of training plus compile and eval overhead.
 - **MFU reporting is placeholder.** There is no Apple Silicon equivalent to the H100 FLOPs reference used upstream.
