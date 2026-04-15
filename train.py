@@ -395,20 +395,35 @@ ASPECT_RATIO = 64
 HEAD_DIM = 128
 WINDOW_PATTERN = "SSSL"
 
-# v0.1: AdamW only. Muon port is future work.
+# ---- Optimizer: dual-path (Muon for 2D block matrices, AdamW for everything else) ----
+# AdamW-side
 TOTAL_BATCH_SIZE = 2**16
 EMBEDDING_LR = 0.6
 UNEMBEDDING_LR = 0.004
-MATRIX_LR = 0.04
+MATRIX_LR = 0.02                # Muon LR (also AdamW matrix LR when MUON_NS_STEPS=0)
 SCALAR_LR = 0.5
-WEIGHT_DECAY = 0.2
+WEIGHT_DECAY = 0.15             # issue #21: 0.15 was optimal on M5 Max
 ADAM_BETAS = (0.8, 0.95)
 WARMUP_RATIO = 0.0
 WARMDOWN_RATIO = 0.5
 FINAL_LR_FRAC = 0.0
 
+# Muon-side. Set MUON_NS_STEPS=0 to disable Muon entirely (falls back to scaled
+# SGD-momentum for 2D block params, i.e. AdamW-only-for-matrices semantics via
+# the classic Muon-without-NS path). Sensible agent ranges:
+#   MUON_MOMENTUM: 0.90 - 0.99          MUON_NS_STEPS: 0, 3, 5, 7
+#   MUON_BETA2:    0.0 or 0.90 - 0.99   MUON_NS_DTYPE: "bfloat16" or "float32"
+# Muon's advantage grows with matrix size. On the M5 Max with a small model
+# (4 layers, 256 dim, ~1900 steps), AdamW beat Muon (issue #21). If you scale
+# below AR=48, also try MUON_NS_STEPS=0 and compare.
+MUON_MOMENTUM = 0.95
+MUON_NS_STEPS = 5
+MUON_NESTEROV = True
+MUON_BETA2 = 0.95
+MUON_NS_DTYPE = "bfloat16"
+
 # Model size
-DEPTH = 4
+DEPTH = 6
 DEVICE_BATCH_SIZE = 16
 FINAL_EVAL_BATCH_SIZE = 256
 STARTUP_EXCLUDE_STEPS = 1
