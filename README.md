@@ -1,3 +1,5 @@
+![banner](banner.png)
+
 # autoresearch-mlx
 
 Apple Silicon (MLX) port of [Karpathy's autoresearch](https://github.com/karpathy/autoresearch).
